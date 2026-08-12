@@ -54,6 +54,19 @@ change: do not attempt an RGB value that Gmail does not offer. For the standard
 policy above, use the listed current Gmail presets; if a preset is unavailable,
 stop and report the nearest available candidate rather than silently choosing one.
 
+## Rainbow Mode
+
+When the user asks for a rainbow recolour, order top-level labels by their
+rendered top-to-bottom sidebar order. Apply this repeating Gmail-preset cycle
+to each root and choose the "and its sublabels" option: red `251, 76, 47`,
+orange `255, 117, 55`, amber `255, 173, 70`, yellow `251, 233, 131`, green
+`66, 214, 146`, green `22, 167, 101`, teal `45, 162, 187`, blue
+`30, 83, 184`, purple `120, 88, 195`, magenta `194, 24, 91`.
+
+Use only when the user explicitly requests rainbow mode; it intentionally
+overrides the semantic category palette. Re-dump or reload the sidebar when
+Gmail virtualizes/collapses labels, and verify the visible roots after the pass.
+
 ## Safety Notes
 
 - Ask before bulk recolouring existing labels when no exact mapping was provided.
