@@ -10,7 +10,7 @@ Find recurring, already-labelled inbox messages that should have been skipped by
 
 - Current inbox messages from the Gmail connector, excluding spam/trash and normally excluding promotions unless the user asks otherwise.
 - Current filter dump from `references/core/dump-state.js` -> `DUMP_FILTERS`.
-- `~/.email-rule-overrides`, if present.
+- `~/.config/skills/gmail-skill/filter-overrides.json`, if present.
 
 ## Workflow
 
