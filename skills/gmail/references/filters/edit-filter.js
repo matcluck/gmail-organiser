@@ -167,4 +167,83 @@ const DELETE_FILTER_FLOW = `async (matchTokens) => {
   return { errors, deleted: false };
 }`;
 
-module.exports = { EDIT_FILTER_FLOW, DELETE_FILTER_FLOW };
+module.exports = { EDIT_FILTER_FLOW, DELETE_FILTER_FLOW, UPDATE_FILTER_ACTIONS_PLAYWRIGHT };
+
+// For action changes, do not use accessible checkbox names: Gmail does not expose
+// them reliably in all browser automation runtimes. Use the stable `input.btj`
+// order and explicit before/after verification instead:
+//
+// 0 Skip Inbox, 1 Mark as read, 2 Star, 3 Apply label, 4 Forward,
+// 5 Delete, 6 Never Spam, 7 Always important, 8 Never important,
+// 9 Categorize, 10 Also apply to existing.
+//
+// Required procedure for a deterministic action update:
+// 1. Match exactly one filter row by criteria plus distinguishing action text.
+// 2. Open Edit and Continue, then wait for `input.btj[type="checkbox"]`.
+// 3. Read all checkbox states; set only approved indexes with `check`/`uncheck`.
+// 4. When applying a label, open the first action-page listbox and select its
+//    exact full path using a real Playwright option click.
+// 5. Submit Update filter and re-dump the row. Require exact criteria and action
+//    equality before proceeding to the next mutation.
+//
+// Never use this index map outside Gmail's filter action screen. If the checkbox
+// count is below 10 or the observed actions disagree with the map, stop and patch
+// the helper before making another mutation.
+
+// UPDATE_FILTER_ACTIONS_PLAYWRIGHT returns one Playwright callback for a complete,
+// atomic action edit.  Use it in a single browser invocation. `matchTokens` must
+// identify exactly one row, `actions` maps visible Gmail action labels to required
+// boolean states, and `applyLabel` is optional.
+//
+// The inputs themselves are offscreen in Gmail. This helper clicks their visible
+// label[for] element and verifies input.checked before submitting.
+function UPDATE_FILTER_ACTIONS_PLAYWRIGHT(spec) {
+  return async (page) => {
+    const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+    const tokens = Array.isArray(spec.matchTokens) ? spec.matchTokens : [spec.matchTokens];
+    const rows = page.locator('tr').filter({ hasText: 'Matches:' });
+    const matches = [];
+    for (let i = 0; i < await rows.count(); i++) {
+      const row = rows.nth(i);
+      const text = await row.innerText();
+      if (tokens.every(token => text.includes(String(token)))) matches.push(i);
+    }
+    if (matches.length !== 1) throw new Error(`Expected one matching filter, found ${matches.length}`);
+    const row = rows.nth(matches[0]);
+    await row.getByRole('link', { name: 'edit', exact: true }).click();
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await page.locator('input.btj[type="checkbox"]').waitFor();
+
+    for (const [labelText, required] of Object.entries(spec.actions || {})) {
+      const labels = page.locator('label.aD').filter({ hasText: new RegExp(`^${labelText.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')}$`) });
+      if (await labels.count() !== 1) throw new Error(`Action label not unique: ${labelText}`);
+      const inputId = await labels.first().getAttribute('for');
+      const input = page.locator(`#${inputId}`);
+      if ((await input.isChecked()) !== Boolean(required)) await labels.first().click();
+      if ((await input.isChecked()) !== Boolean(required)) throw new Error(`Action state did not persist: ${labelText}`);
+    }
+    if (spec.applyLabel) {
+      const listbox = page.getByRole('listbox').first();
+      await listbox.click();
+      await page.getByRole('option', { name: spec.applyLabel, exact: true }).click();
+      if ((await listbox.innerText()).trim() !== spec.applyLabel) throw new Error(`Label selection did not persist: ${spec.applyLabel}`);
+    }
+    await page.getByRole('button', { name: 'Update filter', exact: true }).click();
+    await sleep(400);
+    if (await page.getByRole('link', { name: 'Create a new filter', exact: true }).count() !== 1) throw new Error('Gmail did not return to the filter list');
+    return { updated: true, matchTokens: tokens };
+  };
+}
+
+// ATOMIC BATCH RULE
+// Gmail positions the actual checkbox inputs offscreen. Toggle the visible
+// `label[for=<input id>]`, not the hidden `input.btj`, then read `input.checked`
+// to verify the result.
+//
+// Browser sessions can release or navigate a Gmail tab between separate agent
+// calls. For any action mutation, execute navigate -> uniquely match -> edit ->
+// mutate -> submit -> verify in one browser-code invocation. Do not retain a
+// modal, locator, checkbox, or row reference across calls. A batch may contain
+// several independent operations, but every operation must navigate fresh and
+// report its own before/after row text. Stop the batch on the first failed
+// precondition; never guess a matching row or retry by broadening criteria.
