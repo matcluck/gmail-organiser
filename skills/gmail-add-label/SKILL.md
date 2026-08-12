@@ -40,6 +40,19 @@ The core `gmail` skill should reference this skill as its label-creation entrypo
    - For nested child labels with inherited colour, verify the child colour matches the parent colour.
 8. Do not create or edit filters unless the user separately asks; hand off to `gmail-add-rules` for persistent rules.
 
+## Financial-year normalization
+
+For a repeatable financial-year label migration, use
+`scripts/standardize-fy-labels.mjs` as a planner. It reads a JSON label inventory
+from stdin and emits only collision-checked `from`/`to` changes. The convention is
+`FYyyyy-yy` (for example, `FY2024-25`); a legacy `FY25` means the financial year
+ending in 2025 and becomes `FY2024-25`.
+
+Apply each approved planned change with
+`../gmail/references/labels/rename-label.js` and
+`RENAME_LABEL_PLAYWRIGHT` in one Gmail settings invocation, then re-dump labels.
+Do not restructure parent paths as part of a formatting-only migration.
+
 ## Safety Rules
 
 - Never delete, mark read, unsubscribe, forward, star, or change filters from this skill alone.
