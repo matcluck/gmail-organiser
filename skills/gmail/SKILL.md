@@ -90,7 +90,8 @@ Read only the files needed for the current operation:
 - `references/filters/create-filter.js`: low-call filter creation helpers
 - `references/filters/edit-filter.js`: edit/delete existing filters
 - `references/cleanup/bulk-archive.md`: retroactive Inbox cleanup
-- `references/cleanup/unsubscribe.js`: Gmail-native one-click unsubscribe helper
+- `references/cleanup/unsubscribe.js`: Gmail-native one-click unsubscribe helpers
+- `references/cleanup/plan-safe-unsubscribe.mjs`: deterministic eligibility planner
 - `references/labels/create-label.js`: label creation
 - `../gmail-add-rules/SKILL.md`: rule creation workflow entrypoint
 - `../gmail-add-label/SKILL.md`: label creation and application workflow entrypoint
@@ -158,11 +159,16 @@ Only unsubscribe when the user explicitly asks and all of these are true:
 2. Sender authentication is aligned (SPF or DKIM passes for the visible sender domain).
 3. Gmail exposes its own exact `Unsubscribe` control for that message.
 
-Use `references/cleanup/unsubscribe.js` and
-`GMAIL_NATIVE_UNSUBSCRIBE_PLAYWRIGHT`. Never extract, open, navigate to, or
-follow an unsubscribe, preference-centre, tracking, or any other link inside
-an email. Do not use a mailto fallback. If any precondition fails, report the
-sender as not safely automatable and offer only a user-directed manual route.
+Use `references/cleanup/plan-safe-unsubscribe.mjs` on a Gmail metadata batch.
+It emits eligible/refused records without exposing unsubscribe URLs. After
+explicit approval, pass all eligible records to
+`GMAIL_NATIVE_UNSUBSCRIBE_BATCH_PLAYWRIGHT` in one Gmail browser invocation;
+the runner records each outcome and continues only with independent safe items.
+
+Never extract, open, navigate to, or follow an unsubscribe, preference-centre,
+tracking, or any other link inside an email. Do not use a mailto fallback. If
+any precondition fails, report the sender as not safely automatable and offer
+only a user-directed manual route.
 
 ## Skill Maintenance
 
