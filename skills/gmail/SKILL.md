@@ -110,7 +110,13 @@ Prefer the `*_PLAYWRIGHT` helpers when `browser_run_code_unsafe` is available. G
 
 All helpers support `alsoApplyToExisting`. Use it when the approved change should immediately affect matching existing conversations. For high-risk or large backfills, leave it off and do a reviewed connector search/archive pass.
 
-If labels were created through the Gmail connector while Gmail settings is open, reload `#settings/filters` before opening the label dropdown. The label may exist in the DOM while the overlay is stale.
+After creating labels through the Gmail connector, treat every open Gmail settings
+view and label picker as stale. Close any unsaved filter form, perform a real
+Gmail tab reload (not only hash-route navigation), then open `#settings/labels`
+and re-dump labels. Next open `#settings/filters` and verify the exact full path
+in the label picker before opening a filter form. If it is still absent, reload
+once more and recheck; then fail closed and report the stale-picker condition.
+Never save an incomplete or substitute-label rule.
 
 ## Optimize And Patch
 

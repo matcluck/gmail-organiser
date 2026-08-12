@@ -40,6 +40,13 @@ The core `gmail` skill should reference this skill as its label-creation entrypo
    - For nested child labels with inherited colour, verify the child colour matches the parent colour.
 8. Do not create or edit filters unless the user separately asks; hand off to `gmail-add-rules` for persistent rules.
 
+If the next approved operation is a filter using a connector-created label,
+close any unsaved form and reload the Gmail tab before opening `#settings/labels`.
+Verify the exact full path in the settings dump, then open `#settings/filters`
+and verify it appears in the label picker. If it does not, reload once more and
+recheck; otherwise stop and report the stale-picker condition. Never save with a
+substitute label.
+
 ## Financial-year normalization
 
 For a repeatable financial-year label migration, use
