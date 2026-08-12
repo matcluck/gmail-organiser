@@ -22,7 +22,7 @@ Before Gmail work:
 - Load browser automation tools when persistent Gmail filters/settings are involved.
 - Use the Gmail connector for message search/read/archive/label actions when it is safer or lower-cost.
 - Snapshot current Gmail state for audits with `references/core/dump-state.js`.
-- Read `~/.email-rule-overrides` if filter contract exceptions matter.
+- Read `~/.config/skills/gmail-skill/filter-overrides.json` if filter contract exceptions matter. If absent, treat overrides as empty.
 - Keep browser work sequential; Gmail uses one shared browser session.
 - Estimate call cost. Prefer the helpers in `references/filters/create-filter.js` over hand-clicking repeated flows.
 
@@ -77,7 +77,7 @@ Broad mailing-list skip filter:
 - Must not apply labels or mark read; the base/tag filter handles labeling.
 - Do not use for mixed senders, security/login, bills, health, finance, human mail, account notices, incidents, or anything likely actionable.
 
-Document deliberate exceptions in `~/.email-rule-overrides`.
+Document deliberate exceptions in `~/.config/skills/gmail-skill/filter-overrides.json`. The file is private, agent-neutral configuration: use schema version 1, an `overrides` array, exact `criteria`, and `expectedActions`. An exception ceases to match if any action changes.
 
 ## Core References
 

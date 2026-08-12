@@ -15,7 +15,7 @@ The core `gmail` skill should reference this skill as its rule-creation entrypoi
 - `../gmail/references/core/dump-state.js`
 - `../gmail/references/filters/create-filter.js`
 - `../gmail/references/core/filter-criteria-gotchas.md`
-- `~/.email-rule-overrides`, if present
+- `~/.config/skills/gmail-skill/filter-overrides.json`, if present
 - Example messages or exact sender/list/subject criteria from the user or Gmail connector
 
 ## Default Rule Shapes
@@ -54,7 +54,7 @@ Targeted security filter:
 1. Identify the sender or mailing-list identity from actual messages. Prefer exact `from:` address unless a stable `list:` identity is present.
 2. Identify the label. Use an existing label when possible. If the label is missing, create it through the Gmail connector or core Gmail label helper before opening the filter label dropdown.
 3. Dump current filters before editing and check for an existing base/tag filter, matching skip rule, or targeted security rule.
-4. Read `~/.email-rule-overrides`; only use a non-standard rule if it is already documented or the user explicitly approves documenting it.
+4. Read `~/.config/skills/gmail-skill/filter-overrides.json`; only use a non-standard rule if it is already documented or the user explicitly approves documenting it.
 5. Create the missing base/tag filter first.
 6. Create each approved skip rule:
    - For mixed senders, create phrase-specific skip rules separately. Use one phrase-specific skip filter per independently skippable subject pattern.

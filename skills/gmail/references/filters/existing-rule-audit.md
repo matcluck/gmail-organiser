@@ -6,9 +6,9 @@ Use this for `gmail:audit-rules` or when the user asks whether current Gmail fil
 
 - `references/core/dump-state.js` -> `DUMP_FILTERS`
 - `references/core/dump-state.js` -> `DUMP_LABELS`
-- `~/.email-rule-overrides`, if present
+- `~/.config/skills/gmail-skill/filter-overrides.json`, if present
 
-Read the override file before classifying anything. If it is missing, treat overrides as empty.
+Read the override file before classifying anything. If it is missing, treat overrides as empty. Each override must include exact criteria and expected actions so that a changed forwarding recipient or action is reported again.
 
 ## Rule Contract
 
@@ -19,7 +19,7 @@ Read the override file before classifying anything. If it is missing, treat over
 - A broad mailing-list skip filter may use only the same sender/list criterion as the base/tag rule, skip inbox, and use `Never send it to Spam` when the sender/list identity is dedicated to mailing-list/newsletter mail.
 - Skip filters must not apply a label; the base/tag filter handles labeling.
 - No Gmail filter should ever mark mail as read.
-- Any exception must be documented in `~/.email-rule-overrides`.
+- Any exception must be documented in `~/.config/skills/gmail-skill/filter-overrides.json`.
 
 ## Audit Checks
 
@@ -29,7 +29,7 @@ Classify current filters into:
 - `ok_security_specific`: targeted security rules that label `Security`, stay in inbox, and satisfy the contract.
 - `ok_specific_skip`: phrase-specific skip filters that satisfy the contract.
 - `ok_mailing_list_skip`: broad mailing-list/newsletter skip filters that satisfy the contract.
-- `override`: filters matching `~/.email-rule-overrides`.
+- `override`: filters matching the exact criteria and expected actions in `filter-overrides.json`.
 - `missing_base`: sender/list groups with specific filters but no base/tag filter.
 - `base_missing_never_spam`: base/tag filters without `Never send it to Spam`.
 - `specific_applies_label`: specific skip filters that apply a label.

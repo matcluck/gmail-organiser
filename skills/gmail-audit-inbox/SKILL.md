@@ -15,7 +15,7 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
 - `../gmail/references/core/dump-state.js`
 - `../gmail/references/filters/inbox-keyword-audit.md`
 - `../gmail/references/core/filter-criteria-gotchas.md`
-- `~/.email-rule-overrides`, if present
+- `~/.config/skills/gmail-skill/filter-overrides.json`, if present
 
 ## Workflow
 

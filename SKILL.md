@@ -15,5 +15,6 @@ Use the bundled workflow that matches the request:
 
 Prefer the Gmail connector for messages and label inventory. Use an authenticated browser only for settings that the connector cannot expose, especially Gmail filter definitions.
 
-Run audits read-only first. Do not create, edit, delete, forward, archive, relabel, or otherwise change Gmail state unless the user explicitly approves that exact action after reviewing the audit.
+Read private configuration from `~/.config/skills/gmail-skill/`. Do not place user-specific rules or mailbox data in the skill directory or its repository.
 
+Run audits read-only first. Do not create, edit, delete, forward, archive, relabel, or otherwise change Gmail state unless the user explicitly approves that exact action after reviewing the audit.

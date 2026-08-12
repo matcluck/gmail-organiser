@@ -15,12 +15,12 @@ The core `gmail` skill should reference this skill as its rule-audit entrypoint.
 - `../gmail/references/filters/existing-rule-audit.md`
 - `scripts/audit-filter-state.mjs`
 - `../gmail/references/core/filter-criteria-gotchas.md`
-- `~/.email-rule-overrides`, if present
+- `~/.config/skills/gmail-skill/filter-overrides.json`, if present
 
 ## Workflow
 
 1. Start from Gmail settings and dump labels plus filters with `DUMP_LABELS` and `DUMP_FILTERS`.
-2. Read `~/.email-rule-overrides`; if absent, treat overrides as empty.
+2. Read `~/.config/skills/gmail-skill/filter-overrides.json`; if absent, treat overrides as empty. Pass its complete schema-versioned object to `scripts/audit-filter-state.mjs` as `overrides`.
 3. Classify filters deterministically with `scripts/audit-filter-state.mjs`; use `../gmail/references/filters/existing-rule-audit.md` to interpret review-only cases.
 4. Report counts first, then only concrete exceptions that need decisions or edits.
 5. Do not paste raw Gmail exports into chat.
@@ -34,7 +34,7 @@ The core `gmail` skill should reference this skill as its rule-audit entrypoint.
 - Specific skip filters skip inbox and use Never Spam, with no label.
 - No filter marks mail as read.
 - Delete/forward/star filters require explicit review or an override.
-- Any intentional non-standard rule belongs in `~/.email-rule-overrides`.
+- Any intentional non-standard rule belongs in `~/.config/skills/gmail-skill/filter-overrides.json` and must match both criteria and expected actions.
 
 ## Output
 

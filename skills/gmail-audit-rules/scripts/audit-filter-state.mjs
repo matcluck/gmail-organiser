@@ -114,22 +114,38 @@ export function auditLabelTaxonomy(labels) {
   };
 }
 
+function normalizedActions(actions) {
+  return [...actions].map((action) => action.trim()).sort();
+}
+
+function normalizeOverrides(overrides) {
+  if (Array.isArray(overrides)) return overrides;
+  if (overrides && typeof overrides === "object" && overrides.schemaVersion === 1 && Array.isArray(overrides.overrides)) {
+    return overrides.overrides;
+  }
+  throw new TypeError("overrides must be an array or a schemaVersion 1 override config");
+}
+
 function matchesOverride(filter, overrides) {
   const raw = filter?.criteria?.raw ?? "";
   return overrides.some((entry) => {
     if (typeof entry === "string") return entry.trim() === raw;
-    return entry && typeof entry.criteria === "string" && entry.criteria.trim() === raw;
+    if (!entry || typeof entry.criteria !== "string" || entry.criteria.trim() !== raw) return false;
+    if (!Array.isArray(entry.expectedActions)) return true;
+    const expected = normalizedActions(entry.expectedActions);
+    const actual = normalizedActions(filter?.actions ?? []);
+    return expected.length === actual.length && expected.every((action, index) => action === actual[index]);
   });
 }
 
 export function auditFilterState({ filters, labels = [], overrides = [] }) {
   if (!Array.isArray(filters)) throw new TypeError("filters must be an array");
   if (!Array.isArray(labels)) throw new TypeError("labels must be an array");
-  if (!Array.isArray(overrides)) throw new TypeError("overrides must be an array");
+  const normalizedOverrides = normalizeOverrides(overrides);
 
   const indexed = filters.map((filter, index) => ({ filter, index }));
-  const active = indexed.filter(({ filter }) => !matchesOverride(filter, overrides));
-  const overridden = indexed.filter(({ filter }) => matchesOverride(filter, overrides));
+  const active = indexed.filter(({ filter }) => !matchesOverride(filter, normalizedOverrides));
+  const overridden = indexed.filter(({ filter }) => matchesOverride(filter, normalizedOverrides));
   const safeBase = active.filter(({ filter }) =>
     filter?.label && !filter.skipInbox && !filter.markAsRead && !filter.delete &&
     !filter.forward && !filter.star && filter.neverSpam
