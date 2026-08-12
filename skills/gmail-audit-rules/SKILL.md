@@ -13,6 +13,7 @@ The core `gmail` skill should reference this skill as its rule-audit entrypoint.
 
 - `../gmail/references/core/dump-state.js`
 - `../gmail/references/filters/existing-rule-audit.md`
+- `scripts/audit-filter-state.mjs`
 - `../gmail/references/core/filter-criteria-gotchas.md`
 - `~/.email-rule-overrides`, if present
 
@@ -20,7 +21,7 @@ The core `gmail` skill should reference this skill as its rule-audit entrypoint.
 
 1. Start from Gmail settings and dump labels plus filters with `DUMP_LABELS` and `DUMP_FILTERS`.
 2. Read `~/.email-rule-overrides`; if absent, treat overrides as empty.
-3. Classify filters using `../gmail/references/filters/existing-rule-audit.md`.
+3. Classify filters deterministically with `scripts/audit-filter-state.mjs`; use `../gmail/references/filters/existing-rule-audit.md` to interpret review-only cases.
 4. Report counts first, then only concrete exceptions that need decisions or edits.
 5. Do not paste raw Gmail exports into chat.
 6. If edits are approved, use `../gmail/references/filters/create-filter.js` and `edit-filter.js`.

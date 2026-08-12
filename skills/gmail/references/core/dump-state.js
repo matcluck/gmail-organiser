@@ -11,27 +11,36 @@
 // Returns: array of { name, conversationCount, parent, isUserLabel }
 const DUMP_LABELS = `() => {
   const labels = [];
+  const hierarchy = [];
   // Find all rows with both "remove" and "edit" links — these are user labels
   const rows = [...document.querySelectorAll('tr')].filter(tr => {
     const links = [...tr.querySelectorAll('[role="link"]')].map(l => l.textContent.trim());
     return links.includes('remove') && links.includes('edit');
   });
+  const margins = [...new Set(rows.map(row => {
+    const host = row.querySelector('td div[act="s"]');
+    return Number.parseFloat(host?.style.marginLeft || '0') || 0;
+  }))].sort((a, b) => a - b);
   for (const row of rows) {
     // Label name + count is in the first <td>
     const td = row.querySelector('td');
     if (!td) continue;
-    const text = td.textContent.trim();
-    // Format: "LabelName\\n N conversations" or just "LabelName"
-    const m = text.match(/^(.+?)(?:\\s+(\\d+)\\s+conversations?)?$/s);
-    if (m) {
-      const name = m[1].trim();
-      labels.push({
-        name,
-        conversationCount: m[2] ? parseInt(m[2], 10) : 0,
-        leaf: name.split('/').pop(),
-        parent: name.includes('/') ? name.substring(0, name.lastIndexOf('/')) : null,
-      });
-    }
+    const host = td.querySelector('div[act="s"]');
+    const leaf = host?.textContent.trim();
+    if (!leaf) continue;
+    const margin = Number.parseFloat(host.style.marginLeft || '0') || 0;
+    const level = Math.max(0, margins.indexOf(margin));
+    hierarchy.length = level;
+    const parent = level > 0 ? hierarchy[level - 1] || null : null;
+    const name = parent ? parent + '/' + leaf : leaf;
+    hierarchy[level] = name;
+    const count = td.textContent.match(/(\\d+)\\s+conversations?/);
+    labels.push({
+      name,
+      conversationCount: count ? Number(count[1]) : 0,
+      leaf,
+      parent,
+    });
   }
   return labels.sort((a, b) => a.name.localeCompare(b.name));
 }`;
