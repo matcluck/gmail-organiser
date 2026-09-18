@@ -55,8 +55,8 @@ Targeted security filter:
 2. Identify the label. Use an existing label when possible. If the label is missing, create it through the Gmail connector or core Gmail label helper before opening the filter label dropdown.
 3. Dump current filters before editing and check for an existing base/tag filter, matching skip rule, or targeted security rule.
 4. Read `~/.config/skills/gmail-skill/filter-overrides.json`; only use a non-standard rule if it is already documented or the user explicitly approves documenting it.
-5. Create the missing base/tag filter first.
-6. Create each approved skip rule:
+5. Build one ordered spec array containing each missing base/tag filter followed by its approved skip filters. Run it once with the active runtime's batch helper from `../gmail/references/filters/create-filter.js`.
+6. For each approved skip rule:
    - For mixed senders, create phrase-specific skip rules separately. Use one phrase-specific skip filter per independently skippable subject pattern.
    - For dedicated mailing-list/newsletter senders or stable `list:` IDs, a broad skip-only second rule with no subject/keyword is allowed after the base/tag rule exists.
 7. For security/login/MFA/verification mail, create or confirm a targeted `Security` label rule that keeps Inbox. Do not add skip-inbox unless the user explicitly asks.
@@ -64,7 +64,7 @@ Targeted security filter:
    - Base/tag rule: label existing matches when the user wants current mail filed too.
    - Skip rule: archive existing Inbox messages that exactly match the approved skip criteria.
    - Security rule: label matching current messages but keep them in Inbox.
-9. Verify saved filter rows by matching both criteria and actions. Sender-only verification is not enough.
+9. Require the batch result to verify each saved filter row by exact criteria and actions. Sender-only verification is not enough. Stop on the first failed spec; do not retry blindly.
 10. Verify current Inbox cleanup with the same `in:inbox` search criteria used for the skip rule.
 
 ## Decision Rules

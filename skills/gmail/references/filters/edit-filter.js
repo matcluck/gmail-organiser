@@ -129,10 +129,33 @@ const EDIT_FILTER_FLOW = `async (matchTokens, fieldUpdates) => {
 
 // ─── Legacy: simple From-only edit (still supported) ─────────────────────────
 // EDIT_FILTER_FLOW with fieldUpdates={ "From": "newaddr@example.com" } does the same.
+//
+// VERIFICATION GOTCHA (confirmed 2026-08-17, 232-filter account): after an edit,
+// don't verify by searching all filter rows for a single short token pulled from
+// the new value (e.g. just `"discount"`). On an account with hundreds of filters
+// it can match a completely unrelated pre-existing row first and report a false
+// "after" state, making a correct edit look wrong (or masking a real failure).
+// Verify by re-matching the SAME distinguishing tokens used to find the row
+// originally, scoped to the sender/criteria — not a single new keyword alone.
 
 // ─── DELETE a filter by matching its criteria text ──────────────────────────
 // Delete link is index 1 (second [role="link"]) inside the row.
-// Confirms in a Gmail alertdialog (NOT a native browser dialog).
+// Confirms in a Gmail alertdialog (NOT a native browser dialog) — clicking
+// "delete" alone does nothing until that dialog's "OK" is also clicked.
+//
+// GOTCHA (confirmed 2026-08-17): an open "Confirm delete filter" alertdialog
+// SURVIVES a hash-only `page.goto('#settings/filters')` — Gmail is a SPA, so
+// that navigation doesn't reload the document or reset in-memory modal state.
+// A left-open dialog from a prior delete attempt also appears to mark the rest
+// of the filter list inert: Playwright role-based locators (`getByRole('link',
+// {name:'delete'})`) on background rows return a count of 0 even though plain
+// `document.querySelectorAll('[role="link"]')` still finds them fine. If a
+// batch of deletes silently reports "delete link not unique, count: 0" for
+// every row, suspect a stuck dialog first — check
+// `document.querySelectorAll('[role="alertdialog"]').length` and close it
+// (click OK or Cancel) before trying anything else. Prefer the fully in-page
+// `evaluate()` flow below (which explicitly waits for and closes the dialog
+// every time) over ad-hoc Playwright locator clicks for delete.
 const DELETE_FILTER_FLOW = `async (matchTokens) => {
   const errors = [];
   const sleep = ms => new Promise(r => setTimeout(r, ms));

@@ -11,8 +11,10 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
 
 ## Required Inputs
 
-- Gmail connector inbox search/read results
-- `../gmail/references/core/dump-state.js`
+- Gmail connector inbox search/read results, if a Gmail connector is installed (check first — most sessions have none)
+- If no connector: `get_page_text` on `#inbox` for cheap display-name/subject/label/date text, plus `../gmail/references/core/dump-inbox.js` (`DUMP_INBOX_SENDERS`, keyword-scoped) for the real `from:` addresses of specific candidates
+- `../gmail/references/core/dump-state.js` — prefer the keyword-scoped `DUMP_FILTERS_MATCHING`/`DUMP_LABELS_MATCHING` once you have candidate senders in mind
+- `../gmail/references/diagnostics/audit-inbox-gaps.mjs` — feed it `{filters, senders}` (or `--filters=`/`--senders=` files) to compute missing-base/missing-skip/keyword-gap candidates automatically instead of cross-referencing by hand
 - `../gmail/references/filters/inbox-keyword-audit.md`
 - `../gmail/references/core/filter-criteria-gotchas.md`
 - `~/.config/skills/gmail-skill/filter-overrides.json`, if present
@@ -22,7 +24,7 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
 1. Search Inbox excluding spam/trash. Start with current Inbox unless the user asks for a wider window.
 2. Group messages by sender/list identity, existing label, and apparent intent.
 3. Ignore or default-keep actionable categories: human mail, health, appointments, bills, security, verification/login, closures/incidents, finance, government, and anything requiring response.
-4. Compare recurring automated senders against existing base/tag and specific skip filters.
+4. Compare recurring automated senders against existing base/tag and specific skip filters. Prefer running `../gmail/references/diagnostics/audit-inbox-gaps.mjs` over eyeballing this by hand — it classifies each sender as missing-base / missing-skip / keyword-gap / covered from the raw dumps in one pass.
 5. Suppress low-value candidates where the current message already has the recommended label, should remain in Inbox, and no missing or unsafe persistent rule needs a decision.
 6. Prepare an interview batch with up to 8 candidates, numbered `1.` through `8.` so the user can answer with compact decisions like `1 keep, 2 skip`.
    - Use low-cognitive decision mode: infer the safest category and propose a default action for each item.

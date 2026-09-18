@@ -84,15 +84,22 @@ Document deliberate exceptions in `~/.config/skills/gmail-skill/filter-overrides
 Read only the files needed for the current operation:
 
 - `references/README.md`: reference index
-- `references/core/dump-state.js`: one-call label/filter inventory
+- `references/core/dump-state.js`: one-call label/filter inventory, plus keyword-scoped `DUMP_FILTERS_MATCHING`/`DUMP_LABELS_MATCHING` variants that avoid the ~100-item tool-result truncation cap on large accounts
+- `references/core/dump-inbox.js`: one-call inbox row → real sender address extraction (`DUMP_INBOX_SENDERS`) for when no Gmail connector is installed
+- `references/diagnostics/audit-inbox-gaps.mjs`: standalone Node script — cross-references DUMP_INBOX_SENDERS output against DUMP_FILTERS output and computes missing-base/missing-skip/keyword-gap candidates automatically instead of eyeballing the diff by hand
 - `references/core/filter-criteria-gotchas.md`: forbidden operators and special characters
 - `references/core/stable-selectors.md`: selector patterns
-- `references/filters/create-filter.js`: low-call filter creation helpers
+- `references/filters/create-filter.js`: low-call filter creation helpers for CommonJS/Claude callers
+- `references/filters/create-filter.mjs`: ESM bridge for ChatGPT's persistent JavaScript runtime
 - `references/filters/edit-filter.js`: edit/delete existing filters
 - `references/cleanup/bulk-archive.md`: retroactive Inbox cleanup
 - `references/cleanup/unsubscribe.js`: Gmail-native one-click unsubscribe helpers
 - `references/cleanup/plan-safe-unsubscribe.mjs`: deterministic eligibility planner
 - `references/labels/create-label.js`: label creation
+- `references/labels/move-label.js`: re-nest/rename labels, including the two-save workaround for the same-path rename+reparent collision (see Criteria Safety-adjacent gotcha below)
+- `references/labels/set-label-color.js`: set one label's colour, or cascade one colour to a label and all its sublabels
+- `references/cleanup/archive-by-sender.js`: retroactive Inbox archive by sender, batched, via the confirmed-working per-row-checkbox selection (do not use a toolbar "select all" control — see gotcha below)
+- `../../cli/README.md`: standalone terminal CLI wrapping these helpers over CDP — use for scripted/repeatable runs outside an agent turn; `npm test` covers the pure-logic pieces
 - `../gmail-add-rules/SKILL.md`: rule creation workflow entrypoint
 - `../gmail-add-label/SKILL.md`: label creation and application workflow entrypoint
 - `../gmail-colour-labels/SKILL.md`: label colour workflow entrypoint
@@ -101,12 +108,30 @@ Read only the files needed for the current operation:
 
 Prefer `references/filters/create-filter.js` helpers:
 
+- `CREATE_FILTER_BATCH_WITH_TAB`: ChatGPT browser-client entrypoint; pass the claimed Gmail tab and every approved missing filter spec in one tool execution.
+- `CODEX_CREATE_FILTER_BATCH_PLAYWRIGHT`: Claude/Playwright callback builder; pass all approved missing specs to one `browser_run_code_unsafe` call.
+- `CREATE_FILTER_BATCH_WITH_PAGE`: direct Playwright-page entrypoint when the caller already has a page object.
 - `CODEX_CREATE_LABEL_FILTER_PLAYWRIGHT`: create a base/tag or label-applying filter in one `browser_run_code_unsafe` call.
 - `CODEX_CREATE_SKIP_FILTER_PLAYWRIGHT`: create a skip-only filter in one `browser_run_code_unsafe` call.
 - `CODEX_CREATE_LABEL_FILTER`: create a base/tag or label-applying filter.
 - `CODEX_CREATE_SKIP_FILTER`: create a skip-only filter.
 
-Prefer the `*_PLAYWRIGHT` helpers when `browser_run_code_unsafe` is available. Gmail label dropdown options require real Playwright locator clicks; in-page `browser_evaluate` DOM clicks can open and close the dropdown without selecting the label.
+Use the batch entrypoint for the active runtime instead of one LLM/tool round trip per filter. Order each sender's base/tag spec immediately before its skip-only specs. The shared runtime normalizes specs, refuses labels on skip-only rules, cancels warning-prone criteria, waits for slow Gmail saves without navigating away, and verifies the exact persisted criteria and action set before continuing.
+
+Batch specs use:
+
+```js
+[
+  { from: "news@example.com", label: "Subscriptions/Example", skipInbox: false, alsoApplyToExisting: true },
+  { from: "news@example.com", skipInbox: true, alsoApplyToExisting: true },
+]
+```
+
+Use `list: "updates.example.com"` instead of `from` for a stable mailing-list identity. Optional criteria fields are `to`, `subject`, `hasWords`, and `doesntHave`.
+
+For ChatGPT, dynamically import `references/filters/create-filter.mjs` once in the persistent JavaScript session and call `CREATE_FILTER_BATCH_WITH_TAB(tab, specs)` once. For Claude, require `create-filter.js`, build one callback with `CODEX_CREATE_FILTER_BATCH_PLAYWRIGHT(specs)`, and execute that callback once. Do not wrap the batch helper in an LLM-driven per-filter loop.
+
+Keep the single-filter helpers as compatibility fallbacks. Prefer the `*_PLAYWRIGHT` helpers when `browser_run_code_unsafe` is available. Gmail label dropdown options require real Playwright locator clicks; in-page `browser_evaluate` DOM clicks can open and close the dropdown without selecting the label.
 
 All helpers support `alsoApplyToExisting`. Use it when the approved change should immediately affect matching existing conversations. For high-risk or large backfills, leave it off and do a reviewed connector search/archive pass.
 
@@ -138,6 +163,16 @@ If an existing helper is wrong, brittle, or causes extra calls:
 5. Continue with the updated reusable path.
 
 Do not leave session-only JavaScript as the only copy of a discovered fix. Put reusable Gmail behavior in `references/` or this `SKILL.md`.
+
+## Playwright-Layer Guardrails
+
+These apply to any Gmail settings-page automation (labels, filters), not just one workflow:
+
+- **A stuck dialog or open menu breaks unrelated later steps, not just the one that opened it.** An open `[role="alertdialog"]` or a stacked context menu can make Playwright role-locators on background rows return zero matches, or make later `hover()`/`click()` calls fail with "not visible" on elements that worked moments earlier. Reset defensively *before* every attempt (press Escape twice, click a neutral point off any menu), not only in a catch block after a failure — a failed attempt frequently leaves state open for the next one to trip over.
+- **Never hardcode a color-picker/dropdown value from memory or from a doc comment.** Query the live `aria-label`/option text at runtime and click by the string actually found. Gmail's label-color grid and similar pickers can differ from a previously-documented palette (off-by-one RGB channels, extra or missing swatches) even within the same account.
+- **`browser_run_code_unsafe`'s execution context has no global `setTimeout`.** Use `await page.waitForTimeout(ms)`. This is not just a broken-vs-working distinction: the `ReferenceError` fires *after* a mutating click has already been issued, so the script reports failure while the click may have gone through — and a `page.goto(...)` in the very next call can abort that still-in-flight save, silently reverting it. Always verify a save by re-reading state in a later call, never by trusting "no exception."
+- **Editing a label's name AND its parent nesting in the same Save can silently no-op** when the resulting full path string already equals another label's current display name (most commonly: fixing a flat mis-created label like `"Parent/Child"` by renaming it to `Child` while nesting it under `Parent` — the target path `Parent/Child` collides with the flat label's own current name). The dialog closes normally with no visible error. Split into two Saves through a disposable intermediate name instead (`renameAndNestLabel` in `references/labels/move-label.js` does this).
+- **Verify a batch action by re-reading a distinguishing multi-token match, not one generic keyword**, especially label/filter criteria edits on an account with more than ~100 filters or labels — a single short token can match an unrelated pre-existing row and report a false "after" state.
 
 ## Criteria Safety
 

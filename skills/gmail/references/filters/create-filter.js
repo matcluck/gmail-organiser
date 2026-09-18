@@ -216,6 +216,202 @@ function CODEX_CREATE_SKIP_FILTER_PLAYWRIGHT(spec) {
   });
 }
 
+const GMAIL_FILTERS_URL = "https://mail.google.com/mail/u/0/#settings/filters";
+
+function NORMALIZE_FILTER_SPECS(specs) {
+  if (!Array.isArray(specs) || specs.length === 0) throw new Error("Expected at least one filter spec");
+  return specs.map((input, index) => {
+    const spec = {
+      from: String(input?.from || "").trim(),
+      list: String(input?.list || "").trim(),
+      to: String(input?.to || "").trim(),
+      subject: String(input?.subject || "").trim(),
+      hasWords: String(input?.hasWords || "").trim(),
+      doesntHave: String(input?.doesntHave || "").trim(),
+      label: String(input?.label || "").trim(),
+      skipInbox: input?.skipInbox,
+      neverSpam: input?.neverSpam !== false,
+      alsoApplyToExisting: input?.alsoApplyToExisting !== false,
+    };
+    if (!spec.from && !spec.list) throw new Error(`Filter ${index + 1} needs from or list`);
+    if (typeof spec.skipInbox !== "boolean") throw new Error(`Filter ${index + 1} needs boolean skipInbox`);
+    if (spec.skipInbox && spec.label) throw new Error(`Filter ${index + 1} cannot label in a skip-only rule`);
+    if (!spec.skipInbox && !spec.label) throw new Error(`Filter ${index + 1} needs a label when it stays in Inbox`);
+    return spec;
+  });
+}
+
+function FILTER_ROW_MATCHES_SPEC(rowText, spec) {
+  const compact = String(rowText || "").replace(/\s+/g, " ").trim();
+  const match = compact.match(/^Matches:\s*(.*?)\s*Do this:\s*(.*?)(?:editdelete)?$/);
+  if (!match) return false;
+  const expectedCriteria = [
+    spec.from && `from:(${spec.from})`,
+    spec.to && `to:(${spec.to})`,
+    spec.subject && `subject:(${spec.subject})`,
+    spec.list && `list:(${spec.list})`,
+    spec.hasWords,
+    spec.doesntHave && `-{${spec.doesntHave}}`,
+  ].filter(Boolean).join(" ").replace(/\s+/g, " ").trim();
+  if (match[1].trim() !== expectedCriteria) return false;
+
+  const actions = match[2].replace(/editdelete$/, "").split(/,\s*/).filter(Boolean);
+  const expectedActions = [
+    spec.skipInbox && "Skip Inbox",
+    spec.label && `Apply label "${spec.label}"`,
+    spec.neverSpam && "Never send it to Spam",
+  ].filter(Boolean);
+  return actions.length === expectedActions.length
+    && expectedActions.every((expected) => actions.includes(expected));
+}
+
+async function WAIT_FOR_FILTER_ROW(page, spec, rowMatches, sleep, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const rows = await page.locator("tr").allTextContents({ timeoutMs: 5000 });
+    const row = rows.find((text) => rowMatches(text, spec));
+    if (row) return row.replace(/\s+/g, " ").trim();
+    await sleep(150);
+  }
+  return null;
+}
+
+// One deterministic runtime used by both Claude Playwright callbacks and
+// ChatGPT browser-client tabs. It waits for the exact persisted filter row;
+// never navigate away merely because Gmail has not finished saving yet.
+async function RUN_GMAIL_FILTER_BATCH(runtime, specs, rowMatches, waitForRow) {
+  const { page, navigate } = runtime;
+  const sleep = (ms) => page.waitForTimeout(ms);
+  const waitUntil = async (check, timeoutMs, label) => {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const value = await check();
+      if (value) return value;
+      await sleep(100);
+    }
+    throw new Error(`Timed out waiting for ${label}`);
+  };
+  const setAction = async (text, required, optional = false) => {
+    if (!required) return;
+    const control = page.locator("label.aD").filter({ hasText: text });
+    const count = await control.count();
+    if (optional && count === 0) return;
+    if (count !== 1) throw new Error(`Action control not unique: ${text}`);
+    await control.click();
+    await sleep(100);
+  };
+  const fillIfPresent = async (name, value) => {
+    if (value) await page.getByRole("textbox", { name, exact: true }).fill(value);
+  };
+
+  const results = [];
+  for (const spec of specs) {
+    try {
+      await navigate(GMAIL_FILTERS_URL);
+      const createLink = page.locator("span.sA").filter({ hasText: "Create a new filter" }).last();
+      await waitUntil(async () => await createLink.count() === 1, 15000, "Gmail filter settings");
+      await createLink.click();
+      await waitUntil(async () => await page.locator("input.aQb").count() === 1, 10000, "criteria form");
+
+      await fillIfPresent("From", spec.from);
+      await fillIfPresent("To", spec.to);
+      await fillIfPresent("Subject", spec.subject);
+      await fillIfPresent("Has the words", [spec.list && `list:(${spec.list})`, spec.hasWords].filter(Boolean).join(" "));
+      await fillIfPresent("Doesn't have", spec.doesntHave);
+      await sleep(600);
+
+      const advance = page.getByRole("button", { name: "Create filter", exact: true });
+      await waitUntil(async () => await advance.isEnabled(), 5000, "enabled Create filter button");
+      await advance.click();
+
+      const actionState = await waitUntil(async () => {
+        const dialogs = await page.locator('[role="alertdialog"]').all();
+        const warningTexts = [];
+        for (const dialog of dialogs) {
+          if (await dialog.isVisible()) warningTexts.push(await dialog.innerText({ timeoutMs: 5000 }));
+        }
+        if (warningTexts.some((text) => text.includes("Confirm creating filter"))) return "warning";
+        if (await page.locator('input.btj[type="checkbox"]').count() >= 8) return "actions";
+        return null;
+      }, 10000, "filter actions form");
+      if (actionState === "warning") {
+        const warning = page.locator('[role="alertdialog"]').filter({ hasText: "Confirm creating filter" });
+        const cancel = warning.getByRole("button", { name: "Cancel", exact: true });
+        if (await cancel.count() === 1) await cancel.click();
+        throw new Error("Gmail rejected warning-prone filter criteria");
+      }
+
+      await setAction("Skip the Inbox", spec.skipInbox);
+      await setAction("Apply the label", Boolean(spec.label));
+      await setAction("Never send it to Spam", spec.neverSpam);
+      if (spec.label) {
+        const listbox = page.getByRole("listbox").first();
+        await listbox.click();
+        const option = page.getByRole("option", { name: spec.label, exact: true });
+        await waitUntil(async () => await option.count() === 1 && await option.isVisible(), 5000, `label ${spec.label}`);
+        await option.click();
+        await waitUntil(async () => (await listbox.innerText({ timeoutMs: 5000 })).trim() === spec.label, 5000, `selected label ${spec.label}`);
+      }
+      await setAction("Also apply", spec.alsoApplyToExisting, true);
+      await sleep(300);
+
+      const submit = page.getByRole("button", { name: "Create filter", exact: true });
+      await waitUntil(async () => await submit.isEnabled(), 5000, "enabled filter submit button");
+      await submit.click();
+
+      // Label filters can take several seconds to persist. Poll the exact row on
+      // the current page first so a recovery navigation cannot cancel the save.
+      let row = await waitForRow(page, spec, rowMatches, sleep, 10000);
+      if (!row) {
+        await navigate(GMAIL_FILTERS_URL);
+        await waitUntil(async () => await createLink.count() === 1, 15000, "filter list recovery");
+        row = await waitForRow(page, spec, rowMatches, sleep, 5000);
+      }
+      if (!row) throw new Error("Saved filter row did not match the requested criteria and actions");
+      results.push({ from: spec.from || null, list: spec.list || null, hasWords: spec.hasWords || null, status: "created", row });
+    } catch (error) {
+      results.push({ from: spec.from || null, list: spec.list || null, hasWords: spec.hasWords || null, status: "failed", reason: error.message });
+      break;
+    }
+  }
+  return results;
+}
+
+function CODEX_CREATE_FILTER_BATCH_PLAYWRIGHT(specs) {
+  const normalized = NORMALIZE_FILTER_SPECS(specs);
+  const serializedSpecs = JSON.stringify(normalized);
+  return `async (page) => {
+    const GMAIL_FILTERS_URL = ${JSON.stringify(GMAIL_FILTERS_URL)};
+    const rowMatches = ${FILTER_ROW_MATCHES_SPEC.toString()};
+    const waitForRow = ${WAIT_FOR_FILTER_ROW.toString()};
+    const runBatch = ${RUN_GMAIL_FILTER_BATCH.toString()};
+    if (page.setViewportSize) await page.setViewportSize({ width: 1500, height: 950 });
+    return runBatch({ page, navigate: (url) => page.goto(url) }, ${serializedSpecs}, rowMatches, waitForRow);
+  }`;
+}
+
+async function CREATE_FILTER_BATCH_WITH_PAGE(page, specs) {
+  const normalized = NORMALIZE_FILTER_SPECS(specs);
+  return RUN_GMAIL_FILTER_BATCH(
+    { page, navigate: (url) => page.goto(url) },
+    normalized,
+    FILTER_ROW_MATCHES_SPEC,
+    WAIT_FOR_FILTER_ROW,
+  );
+}
+
+// ChatGPT browser-client entrypoint. Pass the claimed Gmail tab and every
+// already-approved filter spec; one tool execution creates and verifies them.
+async function CREATE_FILTER_BATCH_WITH_TAB(tab, specs) {
+  const normalized = NORMALIZE_FILTER_SPECS(specs);
+  return RUN_GMAIL_FILTER_BATCH(
+    { page: tab.playwright, navigate: (url) => tab.goto(url) },
+    normalized,
+    FILTER_ROW_MATCHES_SPEC,
+    WAIT_FOR_FILTER_ROW,
+  );
+}
+
 const CODEX_PREPARE_FILTER_ACTIONS = `async (spec) => {
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const errors = [];
@@ -375,6 +571,13 @@ const CODEX_CREATE_SKIP_FILTER = `async (spec) => {
 module.exports = {
   CODEX_CREATE_LABEL_FILTER_PLAYWRIGHT,
   CODEX_CREATE_SKIP_FILTER_PLAYWRIGHT,
+  CODEX_CREATE_FILTER_BATCH_PLAYWRIGHT,
+  CREATE_FILTER_BATCH_WITH_PAGE,
+  CREATE_FILTER_BATCH_WITH_TAB,
+  NORMALIZE_FILTER_SPECS,
+  FILTER_ROW_MATCHES_SPEC,
+  WAIT_FOR_FILTER_ROW,
+  RUN_GMAIL_FILTER_BATCH,
   CODEX_PREPARE_FILTER_ACTIONS,
   CODEX_SELECT_LABEL_OPTION,
   CODEX_SUBMIT_FILTER,

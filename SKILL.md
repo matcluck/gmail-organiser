@@ -15,6 +15,8 @@ Use the bundled workflow that matches the request:
 
 Prefer the Gmail connector for messages and label inventory. Use an authenticated browser only for settings that the connector cannot expose, especially Gmail filter definitions.
 
+For scripted or repeatable runs outside an agent turn (or when you just want a real terminal instead of a tool call per action), see `cli/README.md` — a Node CLI that wraps the same `references/**` helpers over CDP against an already-authenticated Chrome window.
+
 Read private configuration from `~/.config/skills/gmail-skill/`. Do not place user-specific rules or mailbox data in the skill directory or its repository.
 
 Run audits read-only first. Do not create, edit, delete, forward, archive, relabel, or otherwise change Gmail state unless the user explicitly approves that exact action after reviewing the audit.

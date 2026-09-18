@@ -59,12 +59,13 @@ async () => {
       const rows = [...tbl.querySelectorAll('tr.zA')].filter(r => r.offsetParent !== null);
       if (rows.length === 0) { results.push({ sender, ok: true, count: 0, note: 'nothing to archive' }); continue; }
 
-      // Select all via header checkbox in toolbar (covers "select all visible")
-      const selectAll = document.querySelector('[role="main"] [aria-label="Select"]');
-      if (selectAll) {
-        ['mousedown', 'mouseup', 'click'].forEach(t => dispatchMouse(selectAll, t));
-        await sleep(150);
+      // Select each row's own checkbox individually (see gotcha below — the
+      // toolbar "Select" control does NOT select-all, despite looking like it).
+      for (const row of rows) {
+        const cb = row.querySelector('[role="checkbox"]');
+        if (cb) { ['mousedown', 'mouseup', 'click'].forEach(t => dispatchMouse(cb, t)); await sleep(120); }
       }
+      await sleep(200);
 
       // If "select all conversations matching" banner shows, click it (handles >100)
       const selAll = [...document.querySelectorAll('[role="main"] span')]
@@ -104,6 +105,8 @@ async () => {
 - **"Select all" banner**: only appears when results exceed one page (~50 rows). Inner check uses regex on the banner text.
 - **URL hash search**: `#search/from%3Asender+in%3Ainbox` is faster than typing — no focus/blur/debounce delays.
 - **Sleep durations**: 800ms after search, 600ms after archive, 150-200ms between mouse events. Tune up if Gmail is slow.
+- **Playwright locator variant of the visible-row gotcha**: `page.locator('tr').filter({ hasText })` can resolve to a hidden duplicate `<tr>` (same text, `getBoundingClientRect()` all zeros, `offsetParent === null`) sitting alongside the real visible row — confirmed on a single-message archive-by-subject flow, not just the bulk multi-sender table case above. Always scope with `page.locator('tr:visible').filter({ hasText })`, and hover the row before clicking its checkbox (the checkbox itself has zero opacity until hover/selection, so `waitFor({ state: 'visible' })` on it can hang even once the row is visible — click it with `{ force: true }` after hovering the row instead).
+- **`[aria-label="Select"]` is NOT a select-all checkbox (confirmed 2026-08-17)**: it's the split-button dropdown trigger (`role="button" aria-haspopup="true"`, contains a decorative `role="checkbox"` icon that never reflects real selection state). Dispatching mousedown/mouseup/click on it does nothing visible and does NOT select any rows — it only opens the All/None/Read/Unread menu if you click through to it. Rows silently stay unselected, so the Archive toolbar button never becomes visible, and every downstream archive click fails with a "no archive button" error that looks like a timing issue but isn't. **Fix**: skip the split-button entirely — iterate the rows and click each row's own `row.querySelector('[role="checkbox"]')` (this one DOES set `aria-checked="true"` on click and reveals the toolbar). This is fine at the per-sender batch sizes this pattern targets (1-10 rows); only fall back to the "Select all N conversations" banner link for larger result sets.
 
 ## Variant: Apply label + archive (Pattern B)
 

@@ -2,6 +2,21 @@
 //
 // Lets the LLM read the entire current configuration in one round trip.
 // Saves dozens of probes during audits.
+//
+// TRUNCATION WARNING (confirmed 2026-08-14 against a real account: 231 filters,
+// ~185 labels): the tool-result pipeline that carries a javascript_tool/
+// browser_evaluate return value back to the LLM has been observed to silently cap
+// large returned arrays at ~100 items, appending a synthetic
+// `"[TRUNCATED: N more items]"` string as the final element instead of erroring.
+// DUMP_LABELS/DUMP_FILTERS below return EVERYTHING they find in the DOM — on an
+// account with more than ~100 labels or filters, a plain call WILL come back
+// incomplete with no obvious warning beyond that trailing string. Two ways to stay
+// under the cap:
+//   1. Prefer DUMP_FILTERS_MATCHING(keywords) / DUMP_LABELS_MATCHING(keywords)
+//      below once you have specific senders in mind — they filter inside the page
+//      before returning, so the response is small regardless of account size.
+//   2. If you must see everything, check the last array element for a
+//      `"[TRUNCATED"` string and narrow/re-run rather than trusting `.length`.
 
 // ─── DUMP_LABELS ────────────────────────────────────────────────────────────
 // Navigate first: browser_navigate("https://mail.google.com/mail/u/0/#settings/labels")
@@ -110,6 +125,52 @@ const DUMP_FILTERS = `() => {
   return filters;
 }`;
 
+// ─── DUMP_FILTERS_MATCHING / DUMP_LABELS_MATCHING ──────────────────────────
+// Keyword-scoped variants that filter inside the page before returning, so the
+// response stays small on large accounts instead of hitting the ~100-item cap
+// above. Use these by default once you have candidate senders in mind; reserve
+// the unscoped DUMP_FILTERS/DUMP_LABELS for small accounts or a first look.
+//
+// Navigate + wait exactly as for DUMP_FILTERS/DUMP_LABELS, then:
+//   browser_evaluate(<DUMP_FILTERS_MATCHING>(["wyze","suno","vistaprint"]))
+//   browser_evaluate(<DUMP_LABELS_MATCHING>(["security","travel","purchas"]))
+//
+// Returns compact { criteria, actions } / label-name arrays — enough to answer
+// "does a filter/label already exist for X" without the full DUMP_FILTERS shape.
+const DUMP_FILTERS_MATCHING = `(keywords) => {
+  const rows = [...document.querySelectorAll('tr')].filter(tr =>
+    tr.textContent.includes('Matches:') && tr.textContent.includes('Do this:')
+  );
+  const matches = [];
+  for (const row of rows) {
+    const text = row.textContent.replace(/\\s+/g, ' ').trim();
+    const lower = text.toLowerCase();
+    if (!keywords.some(k => lower.includes(String(k).toLowerCase()))) continue;
+    const m = text.match(/Matches:\\s*(.+?)\\s*Do this:\\s*(.+?)(?:\\s*editdelete)?$/);
+    if (!m) continue;
+    matches.push({ criteria: m[1].trim(), actions: m[2].replace(/editdelete$/, '').trim() });
+  }
+  return matches;
+}`;
+
+const DUMP_LABELS_MATCHING = `(keywords) => {
+  const rows = [...document.querySelectorAll('tr')].filter(tr => {
+    const links = [...tr.querySelectorAll('[role="link"]')].map(l => l.textContent.trim());
+    return links.includes('remove') && links.includes('edit');
+  });
+  const out = [];
+  for (const row of rows) {
+    const td = row.querySelector('td');
+    if (!td) continue;
+    const host = td.querySelector('div[act="s"]');
+    const leaf = host?.textContent.trim();
+    if (!leaf) continue;
+    if (!keywords.some(k => leaf.toLowerCase().includes(String(k).toLowerCase()))) continue;
+    out.push(leaf);
+  }
+  return out;
+}`;
+
 // ─── DUMP_BOTH ──────────────────────────────────────────────────────────────
 // Two navigations + two evaluates. Use when starting any audit:
 //
@@ -120,4 +181,4 @@ const DUMP_FILTERS = `() => {
 //
 // Then read the two JSON files. The LLM has the full config in one cheap pass.
 
-module.exports = { DUMP_LABELS, DUMP_FILTERS };
+module.exports = { DUMP_LABELS, DUMP_FILTERS, DUMP_FILTERS_MATCHING, DUMP_LABELS_MATCHING };

@@ -1,0 +1,19 @@
+{
+  "name": "gmail-skill-cli",
+  "version": "1.0.0",
+  "description": "Terminal CLI wrapper around the gmail-skill's Playwright browser-automation helpers. Drives the real Gmail web UI over CDP — not the Gmail API.",
+  "main": "gmail-cli.js",
+  "bin": {
+    "gmail": "./gmail-cli.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "playwright-core": "^1.62.1"
+  }
+}

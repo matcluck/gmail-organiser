@@ -10,3 +10,5 @@ async function createLabel(page, labelName) {
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await page.waitForTimeout(2000);
 }
+
+module.exports = { createLabel };

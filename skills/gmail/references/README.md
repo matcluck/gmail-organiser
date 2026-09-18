@@ -18,14 +18,16 @@ This folder contains reusable Gmail automation patterns. Treat it as a small lib
 |---|---|
 | `core/stable-selectors.md` | Stable Gmail selector patterns and the current field map |
 | `core/filter-criteria-gotchas.md` | Filter criteria that Gmail rejects or warns about |
-| `core/dump-state.js` | One-call label/filter inventory before audits |
+| `core/dump-state.js` | One-call label/filter inventory before audits; keyword-scoped `_MATCHING` variants avoid the ~100-item truncation cap on large accounts |
+| `core/dump-inbox.js` | One-call inbox row → real sender address extraction when no Gmail connector is installed |
 | `core/healthcheck.js` | End-to-end drift check before heavy filter work |
 
 ## Filter Workflows
 
 | File | Use For |
 |---|---|
-| `filters/create-filter.js` | Creating filters, including label dropdown handling |
+| `filters/create-filter.js` | One-call Claude/ChatGPT filter batches, exact saved-row verification, and compatibility helpers |
+| `filters/create-filter.mjs` | ChatGPT-compatible ESM bridge to the shared filter helpers |
 | `filters/edit-filter.js` | Editing or deleting existing filters |
 | `filters/retrofit-archive-everything.md` | Converting old skip-inbox filters to inbox-first two-filter pairs |
 | `filters/migration-triage.md` | Classifying existing filters before migration |
@@ -56,6 +58,8 @@ This folder contains reusable Gmail automation patterns. Treat it as a small lib
 | File | Use For |
 |---|---|
 | `diagnostics/test-selectors.js` | Lower-level selector probes |
+| `diagnostics/test-create-filter-batch.js` | Offline cross-runtime filter helper contract tests |
+| `diagnostics/audit-inbox-gaps.mjs` | Standalone Node script: cross-references dumped inbox senders against dumped filters and outputs missing-base/missing-skip/keyword-gap candidates — run with `node`, no browser needed |
 | `diagnostics/browser-use-smoke-test.md` | Codex Browser Use UI smoke test without page `evaluate` |
 
 ## Public Repo Rules
