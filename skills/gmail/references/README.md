@@ -16,6 +16,7 @@ This folder contains reusable Gmail automation patterns. Treat it as a small lib
 
 | File | Use For |
 |---|---|
+| `core/connected-tools.md` | Connected Gmail capability routing, batching, message/thread IDs, and browser fallback |
 | `core/stable-selectors.md` | Stable Gmail selector patterns and the current field map |
 | `core/filter-criteria-gotchas.md` | Filter criteria that Gmail rejects or warns about |
 | `core/dump-state.js` | One-call label/filter inventory before audits; keyword-scoped `_MATCHING` variants avoid the ~100-item truncation cap on large accounts |
@@ -48,6 +49,8 @@ This folder contains reusable Gmail automation patterns. Treat it as a small lib
 
 | File | Use For |
 |---|---|
+| `cleanup/unsubscribe.mjs` | Maintained browser-client unsubscribe batch entrypoint |
+| `cleanup/plan-safe-unsubscribe.mjs` | Eligibility from connected metadata; no external unsubscribe URLs |
 | `cleanup/bulk-archive.md` | Batch archive by sender |
 | `cleanup/archive-from-inbox.js` | Legacy single-sender archive helper |
 | `cleanup/delete-from-sender.js` | Bulk delete by sender |

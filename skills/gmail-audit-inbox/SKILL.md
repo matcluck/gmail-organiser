@@ -11,9 +11,9 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
 
 ## Required Inputs
 
-- Gmail connector inbox search/read results, if a Gmail connector is installed (check first — most sessions have none)
+- Current Gmail tool discovery and connected inbox search/read results. Follow `../gmail/references/core/connected-tools.md`; use browser inbox scraping only when no working connected search/read capability is available.
 - If no connector: `get_page_text` on `#inbox` for cheap display-name/subject/label/date text, plus `../gmail/references/core/dump-inbox.js` (`DUMP_INBOX_SENDERS`, keyword-scoped) for the real `from:` addresses of specific candidates
-- `../gmail/references/core/dump-state.js` — prefer the keyword-scoped `DUMP_FILTERS_MATCHING`/`DUMP_LABELS_MATCHING` once you have candidate senders in mind
+- Connected `list_labels` for labels and counts; `../gmail/references/core/dump-state.js` for unsupported filter definitions. Prefer keyword-scoped `DUMP_FILTERS_MATCHING` after selecting candidate senders.
 - `../gmail/references/diagnostics/audit-inbox-gaps.mjs` — feed it `{filters, senders}` (or `--filters=`/`--senders=` files) to compute missing-base/missing-skip/keyword-gap candidates automatically instead of cross-referencing by hand
 - `../gmail/references/filters/inbox-keyword-audit.md`
 - `../gmail/references/core/filter-criteria-gotchas.md`
@@ -21,8 +21,8 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
 
 ## Workflow
 
-1. Search Inbox excluding spam/trash. Start with current Inbox unless the user asks for a wider window.
-2. Group messages by sender/list identity, existing label, and apparent intent.
+1. Use connected search with `in:inbox -in:spam -in:trash`. Start with current Inbox unless the user asks for a wider window. Read summary pages first; fetch headers or full messages only for candidates needing them. Use label counts for totals and state any partial audit coverage.
+2. Group messages by sender/list identity, existing label, and apparent intent. Apply the core skill's Cleanup classification before proposing archives; an Inbox-count goal does not authorize archiving an unclassified remainder.
 3. Ignore or default-keep actionable categories: human mail, health, appointments, bills, security, verification/login, closures/incidents, finance, government, and anything requiring response.
 4. Compare recurring automated senders against existing base/tag and specific skip filters. Prefer running `../gmail/references/diagnostics/audit-inbox-gaps.mjs` over eyeballing this by hand — it classifies each sender as missing-base / missing-skip / keyword-gap / covered from the raw dumps in one pass.
 5. Suppress low-value candidates where the current message already has the recommended label, should remain in Inbox, and no missing or unsafe persistent rule needs a decision.
@@ -30,8 +30,8 @@ The core `gmail` skill should reference this skill as its inbox-audit entrypoint
    - Use low-cognitive decision mode: infer the safest category and propose a default action for each item.
    - End the batch with compact reply shortcuts so the user can approve or override without rethinking labels from scratch.
 7. Ask for decisions before broad changes unless the user has already authorized safe obvious updates.
-8. Apply approved changes sequentially with the core `gmail` helpers.
-9. Verify persistent filter rows and current Inbox cleanup searches.
+8. Separate approved current-mail cleanup, future filtering and unsubscribe actions. Batch supported mail changes through the connected tools; run unsupported settings or unsubscribe through the maintained browser helpers. An unsubscribe request alone does not authorize archiving existing mail or adding a skip rule.
+9. Verify persistent filter rows and current Inbox cleanup searches. If verification is rate-limited or incomplete, use the bounded recovery guidance in `../gmail/references/core/connected-tools.md` and report the remaining verification gaps.
 10. After a round is applied and verified, continue the audit by presenting the next numbered batch of candidates. Stop only when there are no more useful candidates or the user asks to pause.
 
 ## Interview Format
@@ -89,9 +89,15 @@ In that case, silently treat the item as already handled. Mention it only in a b
 
 ## Applying Approved Changes
 
-For approved candidates:
+For approved candidates, apply only the selected action. Use the connected
+tools for current-mail archives and labels; do not create a persistent filter
+for an archive-only or unsubscribe-only decision. Use metadata reads plus the
+existing eligibility planner for explicit unsubscribe requests, then one native
+Gmail browser batch. See the core routing reference for IDs and verification.
 
-1. Create missing labels first.
+For approved persistent filter changes:
+
+1. Create missing labels first through the connected tool when available.
 2. Create or verify the base/tag filter.
 3. Create or edit the approved skip filter:
    - mixed sender: phrase-specific skip filter

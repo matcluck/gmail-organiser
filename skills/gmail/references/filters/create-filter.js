@@ -301,7 +301,7 @@ async function RUN_GMAIL_FILTER_BATCH(runtime, specs, rowMatches, waitForRow) {
     await sleep(100);
   };
   const fillIfPresent = async (name, value) => {
-    if (value) await page.getByRole("textbox", { name, exact: true }).fill(value);
+    await page.getByRole("textbox", { name, exact: true }).fill(value || "");
   };
 
   const results = [];

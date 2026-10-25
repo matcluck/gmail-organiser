@@ -19,31 +19,28 @@ If one companion skill triggers, also follow this core skill for Gmail setup, sa
 
 Before Gmail work:
 
-- Load browser automation tools when persistent Gmail filters/settings are involved.
-- Use the Gmail connector for message search/read/archive/label actions when it is safer or lower-cost.
-- Snapshot current Gmail state for audits with `references/core/dump-state.js`.
+- Discover the currently exposed Gmail tools first. Prefer the connected tools for supported counts, searches, reads, labels and archives; do not open a browser for those operations by default.
+- Read `references/core/connected-tools.md` for operation routing, batching, ID types and verification. Tool availability can change between turns; a prior missing connection is not a permanent limitation.
+- Use a browser only for an operation the connected tools do not expose, such as persistent filters, label colours or Gmail-native unsubscribe. Snapshot only the settings needed for that operation with `references/core/dump-state.js`.
 - Read `~/.config/skills/gmail-skill/filter-overrides.json` if filter contract exceptions matter. If absent, treat overrides as empty.
 - Keep browser work sequential; Gmail uses one shared browser session.
 - Estimate call cost. Prefer the helpers in `references/filters/create-filter.js` over hand-clicking repeated flows.
 
 ## Browser Setup
 
-For persistent Gmail filters and label settings:
+For unsupported filter definitions or label settings only; native unsubscribe opens the selected message directly using the maintained helper:
 
 1. Navigate to `https://mail.google.com/mail/u/0/#settings/filters`.
 2. If not logged in, ask the user to log in manually. Never automate login.
 3. Resize to at least `1500x950`; Gmail hides parts of the filter dialog in narrower viewports.
-4. Dump labels and filters before audit or bulk edits:
+4. Dump only the settings needed for the approved operation. Prefer connected label inventory; use the labels page when verifying the browser label picker:
    - labels: `#settings/labels` + `DUMP_LABELS`
    - filters: `#settings/filters` + `DUMP_FILTERS`
 
-If Playwright MCP connects only to `127.0.0.1:9222`, start Chromium with the user's normal profile when needed:
-
-```bash
-chromium --remote-debugging-port=9222 --no-first-run --no-default-browser-check
-```
-
-Close the browser process you started before finishing.
+Use the browser control interface provided by the active environment. The optional
+CDP CLI is another frontend driver, not Gmail API access; use it only when that
+control method is permitted. Do not start a second browser/control channel to
+work around restrictions in the active browser tools.
 
 ## Rule Contract
 
@@ -84,6 +81,21 @@ Document deliberate exceptions in `~/.config/skills/gmail-skill/filter-overrides
 Read only the files needed for the current operation:
 
 - `references/README.md`: reference index
+- `references/core/connected-tools.md`: start here for connected Gmail routing and supported browser fallback.
+- `references/core/gmail-dom.js`: for browser drivers that permit mutable page evaluation. The one
+  implementation of everything this skill does inside a Gmail page - dumps,
+  filter authoring, archive passes - as pure browser JavaScript with no
+  Playwright or tool-specific assumptions. Every driver injects this same file,
+  so a DOM gotcha fixed here is fixed for the CLI, for Codex, for a
+  browser-extension agent, and for the next session. Do not re-derive a click
+  sequence in a session; call this and patch it when it is wrong.
+- `references/drivers/README.md`: the driver contract, including the one real
+  click Gmail's label dropdown requires (`needsRealClick` -> `resume()`)
+- `references/drivers/playwright.js`: Playwright/CDP driver; `attach(page)`
+  returns the API with the real-click loop already wired
+- `references/drivers/extension.md`: how to drive the core from an agent whose
+  only page access is a "run JS in the page" tool. ~2 calls per filter instead
+  of the 8-10 that hand-clicking the dialog costs
 - `references/core/dump-state.js`: one-call label/filter inventory, plus keyword-scoped `DUMP_FILTERS_MATCHING`/`DUMP_LABELS_MATCHING` variants that avoid the ~100-item tool-result truncation cap on large accounts
 - `references/core/dump-inbox.js`: one-call inbox row → real sender address extraction (`DUMP_INBOX_SENDERS`) for when no Gmail connector is installed
 - `references/diagnostics/audit-inbox-gaps.mjs`: standalone Node script — cross-references DUMP_INBOX_SENDERS output against DUMP_FILTERS output and computes missing-base/missing-skip/keyword-gap candidates automatically instead of eyeballing the diff by hand
@@ -93,7 +105,8 @@ Read only the files needed for the current operation:
 - `references/filters/create-filter.mjs`: ESM bridge for ChatGPT's persistent JavaScript runtime
 - `references/filters/edit-filter.js`: edit/delete existing filters
 - `references/cleanup/bulk-archive.md`: retroactive Inbox cleanup
-- `references/cleanup/unsubscribe.js`: Gmail-native one-click unsubscribe helpers
+- `references/cleanup/unsubscribe.js`: Gmail-native one-click unsubscribe helpers for Playwright.
+- `references/cleanup/unsubscribe.mjs`: ESM imports and `GMAIL_NATIVE_UNSUBSCRIBE_BATCH_WITH_TAB` for the active browser client.
 - `references/cleanup/plan-safe-unsubscribe.mjs`: deterministic eligibility planner
 - `references/labels/create-label.js`: label creation
 - `references/labels/move-label.js`: re-nest/rename labels, including the two-save workaround for the same-path rename+reparent collision (see Criteria Safety-adjacent gotcha below)
@@ -145,11 +158,16 @@ Never save an incomplete or substitute-label rule.
 
 ## Optimize And Patch
 
-Speed is part of correctness for Gmail work. Before repeating a browser action, ask whether it can be batched into one `browser_evaluate` or done server-side with the Gmail connector.
+Speed is part of correctness for Gmail work. Route supported mail operations to
+the connected tools and batch approved actions. For browser-only work, invoke
+the maintained runtime-compatible batch helper once for the approved items;
+do not reconstruct its steps through separate model calls. Use read-only DOM
+evaluation for compact inspection only when that is the runtime's contract.
+Do not inject `GmailDom` or execute mutating JavaScript through read-only evaluation.
 
 Targets:
 
-- State dump: one evaluate for labels and one evaluate for filters.
+- State dump: connected label inventory; one scoped browser dump for unsupported filter definitions.
 - Label/base filter creation: one `browser_run_code_unsafe` call when available.
 - Skip-only filter creation: one `browser_run_code_unsafe` call when available.
 - Current-mail cleanup: one connector search plus one archive/label batch where practical.
@@ -184,11 +202,23 @@ Use short quoted phrases from actual subjects/snippets when creating private fil
 
 ## Cleanup
 
+Classify current mail before choosing its treatment. Use message content,
+meaningful existing labels, and relevant replies to distinguish actionable or
+unresolved mail, completed conversations, and reference-only records. Labelling
+and Inbox visibility are separate decisions: applying a label does not itself
+justify archiving. Keep unclear items visible for review unless the user directs
+otherwise.
+
+An Inbox-count goal is a triage target, not authorization to archive everything
+else. Do not bulk-archive an unclassified remainder just to reach that count or
+use a dated archive label as a substitute for meaningful filing. Follow explicit
+user instructions about which mail to archive.
+
 For current mail:
 
 - Use Gmail connector searches with `in:inbox ... -in:spam -in:trash`.
-- Archive by message IDs; archiving removes `INBOX` only.
-- Verify by rerunning the same `in:inbox` query.
+- Choose archive granularity explicitly: `archive_emails(thread_ids)` archives entire conversations (up to 100 distinct threads); `batch_modify_email(message_ids, remove_labels=["INBOX"])` archives only the reviewed messages. Never substitute thread IDs for message IDs or vice versa. Preserve `UNREAD` and other labels.
+- Verify by rerunning the same `in:inbox` query. If verification is rate-limited or incomplete, follow "Rate limits and incomplete verification" in `references/core/connected-tools.md`; do not replay changes to obtain verification.
 
 Do not delete, mark read, or unsubscribe unless the user explicitly asks.
 
@@ -205,6 +235,21 @@ It emits eligible/refused records without exposing unsubscribe URLs. After
 explicit approval, pass all eligible records to
 `GMAIL_NATIVE_UNSUBSCRIBE_BATCH_PLAYWRIGHT` in one Gmail browser invocation;
 the runner records each outcome and continues only with independent safe items.
+
+Read candidate headers with the connected `read_email(format="metadata")` and
+run the existing eligibility planner before opening Gmail. Missing headers are
+unknown, not proof of eligibility. For the active browser client, import
+`references/cleanup/unsubscribe.mjs` and call
+`GMAIL_NATIVE_UNSUBSCRIBE_BATCH_WITH_TAB(tab, eligibleItems)` once. It adapts the
+documented locator/navigation interface and awaits either synchronous or
+asynchronous URL inspection. Preserve original unread status after UI inspection
+using the exact observed message IDs; opening a browser message can mark it read.
+
+If an exception occurs after the Gmail confirmation was clicked, do not repeat
+the unsubscribe automatically. Inspect the current confirmation/status first;
+a reporting failure does not prove the request failed. The batch reports
+`outcome-unknown` after a confirmation attempt if verification fails; never
+automatically replay that item. `refused` means confirmation was not attempted.
 
 Never extract, open, navigate to, or follow an unsubscribe, preference-centre,
 tracking, or any other link inside an email. Do not use a mailto fallback. If

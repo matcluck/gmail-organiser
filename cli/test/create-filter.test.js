@@ -66,3 +66,20 @@ test('FILTER_ROW_MATCHES_SPEC rejects a row with mismatched criteria', () => {
   const row = 'Matches: from:(other@b.com) Do this: Skip Inbox, Never send it to Spam editdelete';
   assert.equal(FILTER_ROW_MATCHES_SPEC(row, spec), false);
 });
+
+test('list filters clear Gmail prefilled sender and every unused criterion', async () => {
+  const { RUN_GMAIL_FILTER_BATCH } = require(path.join(__dirname, '..', '..', 'skills', 'gmail', 'references', 'filters', 'create-filter.js'));
+  const values = { From: 'list:(stale.example)', To: 'old@example.com', Subject: 'stale', 'Has the words': 'stale', "Doesn't have": 'stale' };
+  const create = { count: async () => 1, click: async () => {}, filter() { return this; }, last() { return this; } };
+  const page = {
+    waitForTimeout: async () => {},
+    locator: () => create,
+    getByRole: (role, options) => role === 'textbox'
+      ? { fill: async value => { values[options.name] = value; } }
+      : { isEnabled: async () => { throw new Error('fixture-stop-before-submit'); } },
+  };
+  const specs = NORMALIZE_FILTER_SPECS([{ list: 'newsletter.example', skipInbox: true }]);
+  const results = await RUN_GMAIL_FILTER_BATCH({ page, navigate: async () => {} }, specs, () => false, async () => null);
+  assert.equal(results[0].reason, 'fixture-stop-before-submit');
+  assert.deepEqual(values, { From: '', To: '', Subject: '', 'Has the words': 'list:(newsletter.example)', "Doesn't have": '' });
+});
